@@ -1,0 +1,8 @@
+{
+  "name": "github-scanner",
+  "version": "0.1.0",
+  "scripts": {
+    "scan": "bun src/scan.ts",
+    "scan:dev": "bun --watch src/scan.ts"
+  }
+}
