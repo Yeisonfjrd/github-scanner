@@ -6,6 +6,20 @@ export interface IssueAnalysis {
   proposal: string;
 }
 
+export interface PRAnalysis {
+  summary: string;
+  risk: "low" | "med" | "high";
+  likely_impact: string;
+  review_focus: string;
+}
+
+interface PRStats {
+  changed_files: number;
+  additions: number;
+  deletions: number;
+  base_branch: string;
+}
+
 const groqApiBaseUrl = "https://api.groq.com/openai/v1";
 const defaultModel = "llama-3.1-8b-instant";
 const fallbackMessage = "No se puede confirmar con la información disponible.";
@@ -74,6 +88,17 @@ function normalizeAnalysis(value: unknown): IssueAnalysis {
   };
 }
 
+function normalizePRAnalysis(value: unknown): PRAnalysis {
+  const source = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+
+  return {
+    summary: nonEmptyString(source.summary, fallbackMessage),
+    risk: validRisk(source.risk),
+    likely_impact: nonEmptyString(source.likely_impact, fallbackMessage),
+    review_focus: nonEmptyString(source.review_focus, fallbackMessage)
+  };
+}
+
 export async function checkGroqAvailable(): Promise<boolean> {
   try {
     const response = await fetch(`${groqApiBaseUrl}/models`, {
@@ -134,5 +159,55 @@ Responde SOLO con este JSON, sin texto adicional:
     return normalizeAnalysis(parsed);
   } catch {
     return normalizeAnalysis(null);
+  }
+}
+
+export async function analyzePR(title: string, body: string | null, repo: string, stats: PRStats): Promise<PRAnalysis> {
+  const prompt = `Analiza este Pull Request del repositorio "${repo}":
+
+TÍTULO: ${title}
+DESCRIPCIÓN: ${body || "(sin descripción)"}
+ESTADÍSTICAS: ${stats.changed_files} archivos cambiados, +${stats.additions} / -${stats.deletions} líneas
+RAMA BASE: ${stats.base_branch}
+
+Responde SOLO con este JSON, sin texto adicional:
+{
+  "summary": "una sola oración que describe qué hace este PR",
+  "risk": "low | med | high",
+  "likely_impact": "qué funcionalidad puede verse afectada si se mergea",
+  "review_focus": "en qué parte del diff poner atención al revisar"
+}`;
+
+  try {
+    const response = await fetch(`${groqApiBaseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${groqToken()}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: groqModel(),
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: prompt }
+        ],
+        temperature: 0.1,
+        max_tokens: 400
+      })
+    });
+
+    if (!response.ok) {
+      return normalizePRAnalysis(null);
+    }
+
+    const payload = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    const content = payload.choices?.[0]?.message?.content ?? "";
+    const parsed = JSON.parse(cleanJsonPayload(content));
+
+    return normalizePRAnalysis(parsed);
+  } catch {
+    return normalizePRAnalysis(null);
   }
 }
