@@ -3,6 +3,13 @@
   "version": "0.1.0",
   "scripts": {
     "scan": "bun src/scan.ts",
-    "scan:dev": "bun --watch src/scan.ts"
+    "scan:dev": "bun --watch src/scan.ts",
+    "prs": "bun src/scan.ts --prs",
+    "stale": "bun src/scan.ts --stale",
+    "digest": "bun src/scan.ts --digest",
+    "audit": "bun src/scan.ts --audit",
+    "apply": "bun src/scan.ts --apply",
+    "merge-deps": "bun src/scan.ts --merge-deps",
+    "push-workflows": "bun src/scan.ts --push-workflows"
   }
 }
